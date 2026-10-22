@@ -73,15 +73,15 @@ jobs:
 
     - name: Create signing.properties (debug keystore)
       run: |
-        # 生成临时 debug keystore
-        keytool -genkey -v -keystore debug.keystore -alias androiddebugkey \
+        # 生成临时 release keystore（用于 CI 签名）
+        keytool -genkey -v -keystore release.keystore -alias androiddebugkey \
           -keyalg RSA -keysize 2048 -validity 10000 \
           -storepass android -keypass android \
           -dname "CN=Android Debug,O=Android,C=US"
         
         # 创建签名配置
         cat > signing.properties << EOF
-        keystore.path=debug.keystore
+        keystore.path=release.keystore
         keystore.password=android
         key.alias=androiddebugkey
         key.password=android
