@@ -41,7 +41,6 @@ class TetherSession(
             InetAddress.getByName("8.8.8.8"),
         )
 
-        // Step 1: Create TUN interface
         val handle = try {
             testNetworkApi.createTunInterface(addresses)
         } catch (e: Exception) {
@@ -49,9 +48,7 @@ class TetherSession(
             throw e
         }
         tunHandle = handle
-        android.util.Log.i(TAG, "TUN interface created: ${handle.interfaceName}, fd: ${handle.fileDescriptor.fd}")
 
-        // Step 2: Register as test network
         try {
             testNetworkApi.setupTestNetwork(handle.interfaceName, dnsServers, token)
         } catch (e: Exception) {
@@ -59,23 +56,16 @@ class TetherSession(
             throw e
         }
 
-        // Step 3: Poll allNetworks to discover the registered network
         val net = awaitAvailability(handle.interfaceName, AVAILABILITY_TIMEOUT_MS)
         network = net
-        android.util.Log.i(TAG, "Network discovered: $net")
 
-        // Step 4: Register keep-alive callback
         requestKeepAlive(net)
 
-        // Step 5: Find VPN network handle for socket binding
         val vpnHandle = findVpnNetworkHandle()
-        android.util.Log.i(TAG, "VPN network handle: $vpnHandle")
 
-        // Step 6: Start gVisor data forwarder
         try {
             TetherPathBridge.start(handle.fileDescriptor.fd, vpnHandle = vpnHandle)
             forwarderStarted = true
-            android.util.Log.i(TAG, "gVisor datapath started")
         } catch (e: Exception) {
             android.util.Log.e(TAG, "TetherPathBridge.start failed", e)
             throw e
@@ -105,8 +95,6 @@ class TetherSession(
         }
         tunHandle = null
         lifetimeToken = null
-
-        android.util.Log.i(TAG, "Session stopped and cleaned up")
     }
 
     /**
@@ -145,7 +133,6 @@ class TetherSession(
             val cb = object : ConnectivityManager.NetworkCallback() {}
             keepAliveCallback = cb
             connectivityManager.requestNetwork(request, cb)
-            android.util.Log.i(TAG, "Keep-alive callback registered for $network")
         } catch (e: Exception) {
             android.util.Log.w(TAG, "Failed to register keep-alive callback: ${e.message}")
         }

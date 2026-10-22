@@ -39,17 +39,13 @@ class TetherShellService : ITetherService.Stub() {
         }
 
         Runtime.getRuntime().addShutdownHook(Thread {
-            System.err.println("TetherShellService: Shutdown hook triggered")
             forceCleanup()
         })
     }
 
     override fun init(parentPid: String) {
-        android.util.Log.i(TAG, "init() called with parentPid=$parentPid")
-        
         // If already initialized with a different PID, cleanup first (re-injection handling)
         if (this.parentPid.isNotEmpty() && this.parentPid != parentPid) {
-            android.util.Log.i(TAG, "Re-initialization detected, cleaning up old session")
             forceCleanup()
         }
         
@@ -68,11 +64,9 @@ class TetherShellService : ITetherService.Stub() {
         if (watchdogRunning) return
         
         if (parentPid.isEmpty()) {
-            android.util.Log.w(TAG, "No parent PID set, watchdog not starting")
             return
         }
         
-        android.util.Log.i(TAG, "Watchdog monitoring parent PID: $parentPid")
         watchdogRunning = true
         
         Thread({
@@ -113,7 +107,6 @@ class TetherShellService : ITetherService.Stub() {
             val rebasedCtx = rebaseContext(ctx)
             TetherCleanup.cleanupAll(rebasedCtx, session, TAG)
             session = null
-            android.util.Log.i(TAG, "Force cleanup completed")
         } catch (e: Exception) {
             android.util.Log.e(TAG, "Force cleanup failed", e)
         }
@@ -136,11 +129,8 @@ class TetherShellService : ITetherService.Stub() {
     }
 
     override fun startTethering(enableLogging: Boolean, vpnMode: Int) {
-        android.util.Log.i(TAG, "startTethering() called")
-
         // Guard: prevent duplicate sessions
         if (session != null) {
-            android.util.Log.w(TAG, "Existing session found, stopping it first")
             forceCleanup()
         }
         cleaned_up = false  // Reset for new session lifecycle
@@ -172,12 +162,10 @@ class TetherShellService : ITetherService.Stub() {
             val fd = s.start()
             session = s  // Only assign after start() succeeds
             val interfaceName = s.interfaceName
-            android.util.Log.i(TAG, "Session started, TUN: $interfaceName, fd: $fd")
 
             // Set preference for test networks
             try {
                 TetheringPreferenceApi.setPreferTestNetworks(rebasedCtx, true)
-                android.util.Log.i(TAG, "setPreferTestNetworks(true) called successfully")
             } catch (e: Exception) {
                 android.util.Log.e(TAG, "setPreferTestNetworks(true) failed: ${e.message}", e)
             }
@@ -185,33 +173,23 @@ class TetherShellService : ITetherService.Stub() {
             // Verify upstream is our test network
             var verified = verifyUpstream(interfaceName)
             if (!verified) {
-                android.util.Log.w(TAG, "Upstream verification failed for $interfaceName, forcing re-evaluation")
                 // Force upstream re-evaluation by restarting downstream WiFi tethering.
                 // The hotspot was already active before we created testtun, so the tethering
                 // system selected cellular as upstream. Restarting forces it to re-evaluate
                 // with preferTestNetworks=true, which should select testtun0.
                 try {
                     DownstreamControl.stopWifiTethering(rebasedCtx)
-                    android.util.Log.i(TAG, "Stopped WiFi downstream, waiting for settle...")
                     Thread.sleep(2000)
                     DownstreamControl.startWifiTethering(rebasedCtx)
-                    android.util.Log.i(TAG, "Restarted WiFi downstream, waiting for re-evaluation...")
                     Thread.sleep(3000)
                 } catch (e: Exception) {
                     android.util.Log.w(TAG, "Failed to restart downstream tethering: ${e.message}")
                 }
-                // Re-verify after restart
                 verified = verifyUpstream(interfaceName)
                 if (!verified) {
-                    android.util.Log.w(TAG, "Upstream STILL not our test network after restart")
-                } else {
-                    android.util.Log.i(TAG, "Upstream correctly set to $interfaceName after restart")
+                    android.util.Log.w(TAG, "Upstream verification failed after restart for $interfaceName")
                 }
-            } else {
-                android.util.Log.i(TAG, "Upstream verified: $interfaceName")
             }
-
-            android.util.Log.i(TAG, "startTethering() completed successfully")
         } catch (e: Exception) {
             // Rollback: stop the created session if it was assigned but later steps failed
             try { createdSession?.stop() } catch (_: Exception) {}
@@ -222,9 +200,7 @@ class TetherShellService : ITetherService.Stub() {
     }
 
     override fun stopTethering() {
-        android.util.Log.i(TAG, "stopTethering() called")
         forceCleanup()
-        android.util.Log.i(TAG, "stopTethering completed")
     }
 
     override fun getStatus(): String {
@@ -275,7 +251,6 @@ class TetherShellService : ITetherService.Stub() {
             val wasRecentlyStarted = lastStartIdx > lastStopIdx && lastStartIdx != -1
             
             val isEnabled = hasActiveTether || wasRecentlyStarted
-            android.util.Log.d(TAG, "isHotspotEnabled: active=$hasActiveTether, recent=$wasRecentlyStarted -> $isEnabled")
             isEnabled
         } catch (e: Exception) {
             android.util.Log.w(TAG, "isHotspotEnabled failed: ${e.message}")

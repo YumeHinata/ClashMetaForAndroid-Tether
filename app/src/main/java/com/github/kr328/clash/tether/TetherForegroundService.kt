@@ -61,7 +61,6 @@ class TetherForegroundService : Service() {
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
-        android.util.Log.i("TetherForegroundService", "App removed from recent tasks, cleaning up")
         TetherManager.stop(this)
         stopSelf()
         super.onTaskRemoved(rootIntent)

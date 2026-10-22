@@ -16,41 +16,32 @@ object HotspotMonitor {
      * Return `true` when the WiFi hotspot (soft AP) is currently enabled.
      */
     fun isHotspotEnabled(context: Context): Boolean {
-        // Method 1: Try hidden API via reflection
         try {
             val wm = context.applicationContext
                 .getSystemService(Context.WIFI_SERVICE) as? WifiManager
             if (wm != null) {
                 val method = wm.javaClass.getMethod("isWifiApEnabled")
-                val result = method.invoke(wm) as Boolean
-                android.util.Log.d("HotspotMonitor", "Hidden API check: $result")
-                return result
+                return method.invoke(wm) as Boolean
             }
-        } catch (e: Exception) {
-            android.util.Log.w("HotspotMonitor", "Hidden API method failed (${e.javaClass.simpleName}): ${e.message}")
+        } catch (_: Exception) {
         }
 
-        // Method 2: Shell command fallback (works on Android 16+ without root)
+        // Shell command fallback (works on Android 16+ without root)
         try {
             val process = Runtime.getRuntime().exec(arrayOf("dumpsys", "tethering"))
             val output = process.inputStream.bufferedReader().readText()
             process.waitFor()
             
-            // Check for recent startTethering without corresponding stopTethering
             val lastStartIdx = output.lastIndexOf("startTethering calling:")
             val lastStopIdx = output.lastIndexOf("stopTethering calling:")
             val wasRecentlyStarted = lastStartIdx > lastStopIdx && lastStartIdx != -1
             
-            // Also check for active TETHERED state (not historical OBSERVED)
             val hasActiveTether = output.lines().any { line ->
                 line.contains("state=TETHERED") && !line.trim().startsWith("OBSERVED")
             }
             
-            val isHotspot = hasActiveTether || wasRecentlyStarted
-            android.util.Log.d("HotspotMonitor", "Shell tethering check: active=$hasActiveTether, recent=$wasRecentlyStarted -> $isHotspot")
-            return isHotspot
-        } catch (e: Exception) {
-            android.util.Log.w("HotspotMonitor", "Shell command check failed: ${e.message}")
+            return hasActiveTether || wasRecentlyStarted
+        } catch (_: Exception) {
         }
 
         return false

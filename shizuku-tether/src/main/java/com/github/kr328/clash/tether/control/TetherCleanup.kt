@@ -20,43 +20,31 @@ object TetherCleanup {
         session: TetherSession?,
         tag: String = TAG,
     ) {
-        android.util.Log.i(tag, "Starting full cleanup...")
-
-        // 1. Stop gVisor forwarder
         try {
             TetherPathBridge.stop()
-            android.util.Log.i(tag, "gVisor forwarder stopped")
         } catch (e: Exception) {
             android.util.Log.w(tag, "Failed to stop forwarder: ${e.message}")
         }
 
-        // 2. Stop TetherSession (closes TUN fd, teardown test network)
         try {
             session?.stop()
-            android.util.Log.i(tag, "TetherSession stopped")
         } catch (e: Exception) {
             android.util.Log.w(tag, "Failed to stop session: ${e.message}")
         }
 
-        // 3. Stop WiFi downstream tethering
         try {
             val rebasedCtx = rebaseContextIfNeeded(context)
             DownstreamControl.stopWifiTethering(rebasedCtx)
-            android.util.Log.i(tag, "WiFi downstream stopped")
         } catch (e: Exception) {
             android.util.Log.w(tag, "Failed to stop WiFi tethering: ${e.message}")
         }
 
-        // 4. Clear preferTestNetworks
         try {
             val rebasedCtx = rebaseContextIfNeeded(context)
             TetheringPreferenceApi.setPreferTestNetworks(rebasedCtx, false)
-            android.util.Log.i(tag, "preferTestNetworks cleared")
         } catch (e: Exception) {
             android.util.Log.w(tag, "Failed to clear preferTestNetworks: ${e.message}")
         }
-
-        android.util.Log.i(tag, "Full cleanup completed")
     }
 
     /**
@@ -67,8 +55,6 @@ object TetherCleanup {
         session: TetherSession?,
         tag: String = TAG,
     ) {
-        android.util.Log.i(tag, "Quick cleanup (session only)...")
-
         try {
             TetherPathBridge.stop()
         } catch (e: Exception) {
@@ -80,8 +66,6 @@ object TetherCleanup {
         } catch (e: Exception) {
             android.util.Log.w(tag, "Failed to stop session: ${e.message}")
         }
-
-        android.util.Log.i(tag, "Quick cleanup completed")
     }
 
     /**

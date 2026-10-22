@@ -15,28 +15,23 @@ object TetherLogger {
     
     fun init(context: Context) {
         try {
-            // Use app-specific external storage - no permissions required on any Android version
             val logDir = context.getExternalFilesDir(null) ?: context.filesDir
             if (!logDir.exists()) {
                 logDir.mkdirs()
             }
             
             val logFile = File(logDir, "tether_debug.log")
-            android.util.Log.i("TetherLogger", "Initializing log file: ${logFile.absolutePath}")
-            
             writer = BufferedWriter(FileWriter(logFile, true))
             log("=== TetherLogger initialized ===")
             log("Log file: ${logFile.absolutePath}")
             log("Android SDK: ${Build.VERSION.SDK_INT}")
         } catch (e: Exception) {
             android.util.Log.e("TetherLogger", "Failed to init file logger", e)
-            // Try fallback to internal storage
             try {
                 val logDir = context.filesDir
                 val logFile = File(logDir, "tether_debug.log")
                 writer = BufferedWriter(FileWriter(logFile, true))
                 log("=== TetherLogger initialized (fallback) ===")
-                log("Log file: ${logFile.absolutePath}")
             } catch (e2: Exception) {
                 android.util.Log.e("TetherLogger", "Fallback also failed", e2)
             }

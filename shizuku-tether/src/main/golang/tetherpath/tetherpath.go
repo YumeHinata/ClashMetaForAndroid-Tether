@@ -21,7 +21,7 @@ import (
 	"gvisor.dev/gvisor/pkg/tcpip/transport/icmp"
 	"gvisor.dev/gvisor/pkg/tcpip/transport/tcp"
 	"gvisor.dev/gvisor/pkg/tcpip/transport/udp"
-	"gvisor.dev/gvisor/pkg/waiter"
+	"gvisor.dev/gvisor/pkg/tcpip/waiter"
 )
 
 const (
@@ -48,8 +48,6 @@ func StartNetstack(tunFD int, mtu int, socksAddr string) (s *Session, err error)
 			logMsg("PANIC in StartNetstack: %v", r)
 		}
 	}()
-
-	logMsg("StartNetstack: tunFD=%d, mtu=%d, socksAddr=%s", tunFD, mtu, socksAddr)
 
 	netStack := stack.New(stack.Options{
 		NetworkProtocols: []stack.NetworkProtocolFactory{
@@ -89,7 +87,6 @@ func StartNetstack(tunFD int, mtu int, socksAddr string) (s *Session, err error)
 	s = &Session{stack: netStack, socksAddr: socksAddr, vpnHandle: vpnNetworkHandle}
 	installForwarders(netStack, socksAddr, vpnNetworkHandle)
 
-	logMsg("StartNetstack: gVisor datapath started successfully")
 	return s, nil
 }
 
@@ -102,15 +99,12 @@ func (s *Session) Stop() {
 	}
 	s.stack.Close()
 	s.stack = nil
-	logMsg("Session stopped")
 }
 
 func installForwarders(netStack *stack.Stack, socksAddr string, vpnHandle uint64) {
 	dialer := &net.Dialer{Timeout: dialTimeout}
-	
-	// If VPN handle is set, pin sockets to the VPN network
+
 	if vpnHandle != 0 {
-		logMsg("Pinning sockets to VPN network handle %d", vpnHandle)
 		dialer.Control = func(network, address string, c syscall.RawConn) error {
 			return c.Control(func(fd uintptr) {
 				if err := bindToNetwork(vpnHandle, int(fd)); err != nil {
@@ -135,7 +129,6 @@ func forwardTCP(request *tcp.ForwarderRequest, dialer *net.Dialer, socksAddr str
 	id := request.ID()
 	dest := destinationOf(id)
 
-	logMsg("TCP forward: %s", dest)
 	upstream, err := dialer.Dial("tcp", dest)
 	if err != nil {
 		logMsg("TCP dial failed for %s: %v", dest, err)
@@ -161,7 +154,6 @@ func forwardUDP(request *udp.ForwarderRequest, dialer *net.Dialer, socksAddr str
 	id := request.ID()
 	dest := destinationOf(id)
 
-	logMsg("UDP forward: %s", dest)
 	upstream, err := dialer.Dial("udp", dest)
 	if err != nil {
 		logMsg("UDP dial failed for %s: %v", dest, err)

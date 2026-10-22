@@ -84,14 +84,12 @@ object TetherManager {
         if (proxyObserverRegistered) return
         Remote.broadcasts.addObserver(proxyObserver)
         proxyObserverRegistered = true
-        TetherLogger.log("TetherManager", "Proxy observer registered")
     }
 
     fun unregisterProxyObserver() {
         if (!proxyObserverRegistered) return
         Remote.broadcasts.removeObserver(proxyObserver)
         proxyObserverRegistered = false
-        TetherLogger.log("TetherManager", "Proxy observer unregistered")
     }
 
     // ------------------------------------------------------------------
@@ -124,20 +122,15 @@ object TetherManager {
      */
     fun start(context: Context, isAutoStart: Boolean = false) {
         val appCtx = context.applicationContext
-        TetherLogger.log("TetherManager", "start() called (autoStart=$isAutoStart)")
 
         synchronized(bindLock) {
             val currentStatus = _state.value.status
             if (currentStatus != TetherStatus.IDLE && currentStatus != TetherStatus.ERROR) {
-                TetherLogger.log("TetherManager", "Already active, state=$currentStatus, skipping")
                 return
             }
 
-            // Compatibility check
             val compat = CompatibilityCheck.probe(appCtx)
-            TetherLogger.log("TetherManager", "Compatibility: supported=${compat.isSupported}")
             if (!compat.isSupported) {
-                TetherLogger.logError("TetherManager", "Device not supported")
                 updateState(TetherState(
                     status = TetherStatus.ERROR,
                     compatibilityReport = compat.details,
@@ -146,55 +139,37 @@ object TetherManager {
                 return
             }
 
-            // Register proxy observer
             registerProxyObserver()
 
-            // Increment generation
             generation++
             val myGen = generation
-            TetherLogger.log("TetherManager", "Generation -> $myGen")
 
-            // Clean up any existing client (from ERROR state)
             if (client != null) {
-                TetherLogger.log("TetherManager", "Cleaning up existing client")
                 try { client?.unbind(appCtx) } catch (_: Exception) {}
                 client = null
             }
 
-            // Bind shell service
             val c = TetherClient()
             client = c
             var onConnectedFired = false
 
-            TetherLogger.log("TetherManager", "Binding shell service")
             try {
                 c.bind(
                     context = appCtx,
                     onConnected = { service ->
-                        // Guard against duplicate onConnected
-                        if (onConnectedFired) {
-                            TetherLogger.log("TetherManager", "Duplicate onConnected, ignoring")
-                            return@bind
-                        }
+                        if (onConnectedFired) return@bind
                         onConnectedFired = true
 
-                        // Check generation
-                        if (myGen != generation) {
-                            TetherLogger.log("TetherManager", "Stale onConnected (gen $myGen != $generation), ignoring")
-                            return@bind
-                        }
+                        if (myGen != generation) return@bind
 
-                        TetherLogger.log("TetherManager", "Shell service bound (gen=$myGen)")
                         monitorScope.launch {
                             try {
                                 val hotspotOn = service.isHotspotEnabled
-                                TetherLogger.log("TetherManager", "Initial hotspot state: $hotspotOn")
                                 updateState(_state.value.copy(hotspotOn = hotspotOn, error = ""))
 
                                 if (hotspotOn) {
                                     startTetheringOnService(service, myGen, appCtx)
                                 } else {
-                                    TetherLogger.log("TetherManager", "Hotspot OFF -> WAITING_HOTSPOT")
                                     updateState(_state.value.copy(status = TetherStatus.WAITING_HOTSPOT))
                                     startHotspotMonitoring(appCtx, myGen)
                                 }
@@ -211,7 +186,6 @@ object TetherManager {
                         handleShellDisconnect(myGen)
                     },
                 )
-                TetherLogger.log("TetherManager", "bind() returned, waiting for onConnected")
             } catch (e: Exception) {
                 TetherLogger.logError("TetherManager", "bind() threw exception", e)
                 client = null
@@ -234,29 +208,23 @@ object TetherManager {
      */
     fun stop(context: Context) {
         val appCtx = context.applicationContext
-        TetherLogger.log("TetherManager", "stop() called")
 
         val capturedClient: TetherClient?
         val myGen: Long
 
         synchronized(bindLock) {
-            // Increment generation to invalidate pending operations
             generation++
             myGen = generation
-            TetherLogger.log("TetherManager", "stop() generation -> $myGen")
 
             unregisterProxyObserver()
             stopHotspotMonitoring()
 
-            // Capture current client and null it out
             capturedClient = client
             client = null
 
-            // Set IDLE immediately
             updateState(TetherState())
         }
 
-        // Do the actual cleanup on IO thread with the CAPTURED client
         monitorScope.launch(Dispatchers.IO) {
             doStopWithClient(appCtx, capturedClient)
         }
@@ -275,17 +243,11 @@ object TetherManager {
      * Checks generation to avoid stale operations.
      */
     private fun startTetheringOnService(service: com.github.kr328.clash.tether.ITetherService, gen: Long, context: Context) {
-        if (gen != generation) {
-            TetherLogger.log("TetherManager", "Stale startTethering (gen $gen != $generation), skipping")
-            return
-        }
+        if (gen != generation) return
 
         updateState(_state.value.copy(status = TetherStatus.CONNECTED, error = ""))
-        TetherLogger.log("TetherManager", "State -> CONNECTED")
 
-        // Shizuku check
         val shizukuState = ShizukuGate.resolveState(context)
-        TetherLogger.log("TetherManager", "Shizuku state: $shizukuState")
         if (shizukuState !is ShizukuState.Ready) {
             val errorMsg = "Shizuku not ready: $shizukuState"
             TetherLogger.logError("TetherManager", errorMsg)
@@ -298,9 +260,7 @@ object TetherManager {
 
         try {
             service.startTethering(false, 0)
-            TetherLogger.log("TetherManager", "startTethering() OK")
             updateState(_state.value.copy(upstreamInterface = service.upstreamInterface))
-            // Start polling for hotspot state changes
             startHotspotMonitoring(context, gen)
         } catch (e: Exception) {
             TetherLogger.logError("TetherManager", "startTethering() failed", e)
@@ -317,7 +277,6 @@ object TetherManager {
      */
     private fun doStopWithClient(context: Context, target: TetherClient?) {
         if (target == null) return
-        TetherLogger.log("TetherManager", "doStopWithClient()")
         try {
             target.service?.stopTethering()
         } catch (e: Exception) {
@@ -335,13 +294,9 @@ object TetherManager {
      * Only process if generation matches (avoid stale callbacks).
      */
     private fun handleShellDisconnect(gen: Long) {
-        if (gen != generation) {
-            TetherLogger.log("TetherManager", "Stale onDisconnected (gen $gen != $generation), ignoring")
-            return
-        }
+        if (gen != generation) return
 
         val currentStatus = _state.value.status
-        TetherLogger.log("TetherManager", "Shell service disconnected (gen=$gen), current state=$currentStatus")
 
         if (currentStatus == TetherStatus.CONNECTED || currentStatus == TetherStatus.WAITING_HOTSPOT) {
             TetherLogger.log("TetherManager", "Shell process died in active state -> ERROR")
@@ -364,32 +319,19 @@ object TetherManager {
      * Called from onConnected (not from start()) to avoid immediate exit.
      */
     private fun startHotspotMonitoring(context: Context, gen: Long) {
-        if (monitorJob?.isActive == true) {
-            TetherLogger.log("TetherManager", "Polling already active, skipping")
-            return
-        }
-
-        TetherLogger.log("TetherManager", "Starting hotspot polling (interval=${HOTSPOT_POLL_INTERVAL_MS}ms, gen=$gen)")
+        if (monitorJob?.isActive == true) return
 
         monitorJob = monitorScope.launch {
             while (isActive) {
-                // Check generation
-                if (gen != generation) {
-                    TetherLogger.log("TetherManager", "Polling: stale generation ($gen != $generation), exiting")
-                    break
-                }
+                if (gen != generation) break
 
                 val currentStatus = _state.value.status
-                if (currentStatus == TetherStatus.IDLE || currentStatus == TetherStatus.ERROR) {
-                    TetherLogger.log("TetherManager", "Polling: state=$currentStatus, exiting")
-                    break
-                }
+                if (currentStatus == TetherStatus.IDLE || currentStatus == TetherStatus.ERROR) break
 
                 try {
                     val isOn = queryHotspotState(context)
                     val prev = _state.value.hotspotOn
                     if (isOn != prev) {
-                        TetherLogger.log("TetherManager", "Hotspot changed: $prev -> $isOn")
                         updateState(_state.value.copy(hotspotOn = isOn))
                         handleHotspotStateChange(context, isOn, gen)
                     }
@@ -398,7 +340,6 @@ object TetherManager {
                 }
                 delay(HOTSPOT_POLL_INTERVAL_MS)
             }
-            TetherLogger.log("TetherManager", "Polling loop ended (gen=$gen)")
         }
     }
 
@@ -421,7 +362,6 @@ object TetherManager {
     }
 
     private fun stopHotspotMonitoring() {
-        TetherLogger.log("TetherManager", "Stopping hotspot monitoring")
         monitorJob?.cancel()
         monitorJob = null
     }
@@ -437,15 +377,12 @@ object TetherManager {
 
         when {
             isOn && currentStatus == TetherStatus.WAITING_HOTSPOT -> {
-                TetherLogger.log("TetherManager", "Hotspot ON + WAITING_HOTSPOT -> starting tether")
                 monitorScope.launch {
                     try {
                         val c = client
                         val svc = c?.service
                         if (c != null && svc != null && c.isConnected && gen == generation) {
                             startTetheringOnService(svc, gen, context)
-                        } else {
-                            TetherLogger.log("TetherManager", "Client not ready or stale gen, skipping")
                         }
                     } catch (e: Exception) {
                         TetherLogger.logError("TetherManager", "Auto-start failed", e)
@@ -458,13 +395,11 @@ object TetherManager {
             }
 
             !isOn && currentStatus == TetherStatus.CONNECTED -> {
-                TetherLogger.log("TetherManager", "Hotspot OFF + CONNECTED -> stopTethering (keep client for monitoring)")
                 monitorScope.launch(Dispatchers.IO) {
                     try {
                         val c = client
                         if (c != null && c.isConnected && gen == generation) {
                             c.service?.stopTethering()
-                            TetherLogger.log("TetherManager", "stopTethering() OK")
                         }
                         updateState(_state.value.copy(
                             status = TetherStatus.WAITING_HOTSPOT,

@@ -45,31 +45,20 @@ class MainApplication : Application() {
         try {
             val controller = com.github.kr328.clash.tether.TetherController
             
-            // Check if auto-start is enabled
             if (!controller.isAutoStartEnabled(this)) return
 
-            // Register proxy observer to catch future proxy start events
             com.github.kr328.clash.tether.TetherManager.registerProxyObserver()
 
-            // If proxy is already running, enable tether via controller
             if (Remote.broadcasts.clashRunning) {
                 val compat = com.github.kr328.clash.tether.testnetwork.CompatibilityCheck.probe(this)
-                if (!compat.isSupported) {
-                    Log.d("Tether auto-start skipped: device not supported")
-                    return
-                }
-                Log.d("Tether auto-starting (proxy already running)...")
+                if (!compat.isSupported) return
                 controller.setEnabled(this, true)
             } else {
-                // clashRunning may be false because broadcasts.register() hasn't completed yet.
-                // Schedule a delayed re-check to catch the case where proxy is already running.
-                Log.d("Tether auto-start: clashRunning=false, scheduling delayed re-check")
                 android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
                     try {
                         if (Remote.broadcasts.clashRunning && 
                             com.github.kr328.clash.tether.TetherManager.state.value.status == 
                                 com.github.kr328.clash.tether.TetherStatus.IDLE) {
-                            Log.d("Tether auto-start: delayed re-check succeeded, starting tether")
                             controller.setEnabled(this@MainApplication, true)
                         }
                     } catch (e: Exception) {

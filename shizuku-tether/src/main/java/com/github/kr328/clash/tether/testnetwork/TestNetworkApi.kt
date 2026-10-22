@@ -55,13 +55,12 @@ class TestNetworkApi(private val manager: Any) {
                 IBinder::class.java,
             )
             method.isAccessible = true
-            val returnValue = method.invoke(manager, lp, true, lifetimeToken)
-            android.util.Log.i("TestNetworkApi", "setupTestNetwork(LinkProperties) returned: $returnValue")
+            method.invoke(manager, lp, true, lifetimeToken)
             // Return value may be null on MIUI/HyperOS but network is still registered.
             // Caller must poll ConnectivityManager.allNetworks to discover the network.
             return
         } catch (e: NoSuchMethodException) {
-            android.util.Log.w("TestNetworkApi", "setupTestNetwork(LinkProperties) not found: ${e.message}")
+            // Try fallback below
         } catch (e: Exception) {
             android.util.Log.e("TestNetworkApi", "setupTestNetwork(LinkProperties) failed: ${e.message}", e)
         }
@@ -74,10 +73,8 @@ class TestNetworkApi(private val manager: Any) {
                 IBinder::class.java,
             )
             fallback.isAccessible = true
-            val returnValue = fallback.invoke(manager, interfaceName, lifetimeToken)
-            android.util.Log.i("TestNetworkApi", "setupTestNetwork(String) returned: $returnValue")
+            fallback.invoke(manager, interfaceName, lifetimeToken)
         } catch (e: NoSuchMethodException) {
-            android.util.Log.e("TestNetworkApi", "setupTestNetwork(String) not found: ${e.message}")
             throw e
         } catch (e: Exception) {
             android.util.Log.e("TestNetworkApi", "setupTestNetwork(String) failed: ${e.message}", e)

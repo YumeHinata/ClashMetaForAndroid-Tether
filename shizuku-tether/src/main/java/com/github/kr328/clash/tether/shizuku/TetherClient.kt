@@ -30,7 +30,6 @@ class TetherClient {
                 val myPid = android.os.Process.myPid().toString()
                 try {
                     tether.init(myPid)
-                    android.util.Log.i("TetherClient", "init() called with PID=$myPid")
                 } catch (e: Exception) {
                     android.util.Log.w("TetherClient", "init() failed: ${e.message}")
                 }
@@ -61,15 +60,12 @@ class TetherClient {
     }
 
     fun unbind(context: android.content.Context) {
-        android.util.Log.i("TetherClient", "unbind() called")
-
-        // Step 1: Try to stop tethering in shell process (best-effort)
+        // Stop tethering in shell process (best-effort)
         val serviceRef = binder
         if (serviceRef != null) {
             val stopFuture = java.util.concurrent.CompletableFuture.runAsync {
                 try {
                     serviceRef.stopTethering()
-                    android.util.Log.i("TetherClient", "stopTethering() succeeded")
                 } catch (e: Exception) {
                     android.util.Log.w("TetherClient", "stopTethering() failed: ${e.message}")
                 }
@@ -84,7 +80,7 @@ class TetherClient {
             }
         }
 
-        // Step 2: Always unbind the service (this kills the shell process with daemon(false))
+        // Unbind the service (this kills the shell process with daemon(false))
         val conn = connection
         connection = null
         binder = null
@@ -104,7 +100,6 @@ class TetherClient {
                     .version(CONTRACT_VERSION)
 
                 Shizuku.unbindUserService(args, conn, true)
-                android.util.Log.i("TetherClient", "unbindUserService() completed")
             } catch (e: Exception) {
                 android.util.Log.e("TetherClient", "unbindUserService() failed: ${e.message}")
             }
