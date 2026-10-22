@@ -112,7 +112,7 @@ jobs:
         ls -lh "$TETHERPATH_LIBS_DIR/"
         
         echo "=== Going back to project root ==="
-        cd $(pwd)/../../../..
+        cd ../../../../..
         echo "=== Now in: $(pwd) ==="
         echo "=== Final check ==="
         ls -lh shizuku-tether/libs/
