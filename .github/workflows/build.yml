@@ -124,19 +124,60 @@ jobs:
         ls -lh shizuku-tether/libs/
 
     - name: Build with Gradle
-      run: ./gradlew app:assembleAlphaRelease --no-daemon
+      run: ./gradlew app:assembleMetaDebug --no-daemon
       env:
         ORG_GRADLE_PROJECT_custom_application_id: ${{ vars.CUSTOM_APPLICATION_ID || '' }}
 
-    - name: Upload APK artifacts
-      uses: actions/upload-artifact@v4
+    - name: List APK files
       if: success()
+      run: |
+        echo "=== Generated APK files ==="
+        find app/build/outputs/apk -name "*.apk" -type f | sort
+
+    - name: Upload arm64-v8a APK
+      if: success()
+      uses: actions/upload-artifact@v4
       with:
-        name: APK-${{ github.sha }}
-        path: |
-          app/build/outputs/apk/**/*.apk
+        name: cmfa-meta-debug-arm64-v8a
+        path: app/build/outputs/apk/meta/debug/*arm64-v8a*.apk
         retention-days: 30
-        if-no-files-found: warn
+        if-no-files-found: ignore
+
+    - name: Upload armeabi-v7a APK
+      if: success()
+      uses: actions/upload-artifact@v4
+      with:
+        name: cmfa-meta-debug-armeabi-v7a
+        path: app/build/outputs/apk/meta/debug/*armeabi-v7a*.apk
+        retention-days: 30
+        if-no-files-found: ignore
+
+    - name: Upload x86 APK
+      if: success()
+      uses: actions/upload-artifact@v4
+      with:
+        name: cmfa-meta-debug-x86
+        path: app/build/outputs/apk/meta/debug/*x86*.apk
+        retention-days: 30
+        if-no-files-found: ignore
+
+    - name: Upload x86_64 APK
+      if: success()
+      uses: actions/upload-artifact@v4
+      with:
+        name: cmfa-meta-debug-x86_64
+        path: app/build/outputs/apk/meta/debug/*x86_64*.apk
+        retention-days: 30
+        if-no-files-found: ignore
+
+    - name: Upload universal APK
+      if: success()
+      uses: actions/upload-artifact@v4
+      with:
+        name: cmfa-meta-debug-universal
+        path: app/build/outputs/apk/meta/debug/*universal*.apk
+        retention-days: 30
+        if-no-files-found: ignore
 
     - name: Upload build reports
       uses: actions/upload-artifact@v4
