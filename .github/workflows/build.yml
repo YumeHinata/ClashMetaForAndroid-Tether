@@ -90,6 +90,15 @@ jobs:
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
 
+    - name: Build tetherpath AAR with gomobile
+      run: |
+        # Build the Go library into AAR before Gradle dependency resolution
+        mkdir -p shizuku-tether/libs
+        cd shizuku-tether/src/main/golang/tetherpath
+        gomobile bind -v -target=android -androidapi=21 -o=../../libs/tetherpath.aar .
+        cd ../../../..
+        ls -lh shizuku-tether/libs/
+
     - name: Build with Gradle
       run: ./gradlew app:assembleAlphaRelease --no-daemon
       env:
