@@ -73,6 +73,9 @@ jobs:
 
     - name: Create signing.properties (debug keystore)
       run: |
+        # 删除可能存在的旧 keystore
+        rm -f release.keystore debug.keystore
+        
         # 生成临时 release keystore（用于 CI 签名）
         keytool -genkey -v -keystore release.keystore -alias androiddebugkey \
           -keyalg RSA -keysize 2048 -validity 10000 \
@@ -86,6 +89,9 @@ jobs:
         key.alias=androiddebugkey
         key.password=android
         EOF
+        
+        echo "=== Keystore created ==="
+        ls -lh release.keystore
 
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
