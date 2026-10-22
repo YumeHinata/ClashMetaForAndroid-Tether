@@ -93,9 +93,10 @@ jobs:
     - name: Build tetherpath AAR with gomobile
       run: |
         # Build the Go library into AAR before Gradle dependency resolution
-        mkdir -p shizuku-tether/libs
+        TETHERPATH_LIBS_DIR=$(pwd)/shizuku-tether/libs
+        mkdir -p "$TETHERPATH_LIBS_DIR"
         cd shizuku-tether/src/main/golang/tetherpath
-        gomobile bind -v -target=android -androidapi=21 -o=../../../libs/tetherpath.aar .
+        gomobile bind -v -target=android -androidapi=21 -o="$TETHERPATH_LIBS_DIR/tetherpath.aar" .
         cd ../../../..
         ls -lh shizuku-tether/libs/
 
