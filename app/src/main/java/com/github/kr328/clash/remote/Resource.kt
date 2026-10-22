@@ -68,6 +68,11 @@ class Resource<T> {
     }
 
     @Synchronized
+    fun isSet(): Boolean {
+        return value != null
+    }
+
+    @Synchronized
     private fun cancel(callback: Callback<T>) {
         pending.remove(callback)
     }

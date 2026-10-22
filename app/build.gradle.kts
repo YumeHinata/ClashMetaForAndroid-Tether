@@ -15,6 +15,7 @@ dependencies {
     implementation(project(":service"))
     implementation(project(":design"))
     implementation(project(":common"))
+    implementation(project(":shizuku-tether"))
 
     implementation(libs.kotlin.coroutine)
     implementation(libs.androidx.core)
@@ -61,8 +62,9 @@ afterEvaluate {
     val downloadGeoFilesTask = tasks["downloadGeoFiles"]
 
     tasks.forEach {
-        if (it.name.startsWith("assemble")) {
+        if (it.name.startsWith("assemble") || it.name.contains("Dependencies")) {
             it.dependsOn(downloadGeoFilesTask)
+            it.dependsOn(":shizuku-tether:gomobileBind")
         }
     }
 }

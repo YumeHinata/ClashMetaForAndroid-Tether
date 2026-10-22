@@ -2,6 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <uses-sdk tools:overrideLibrary="rikka.shizuku.provider,rikka.shizuku.api,rikka.shizuku.shared,rikka.shizuku.aidl" />
+
     <uses-feature
         android:name="android.software.leanback"
         android:required="false" />
@@ -16,6 +18,15 @@
         tools:ignore="QueryAllPackagesPermission" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+
+    <!-- Tether proxy (Shizuku) permissions -->
+    <uses-permission android:name="android.permission.MANAGE_TEST_NETWORKS"
+        tools:ignore="ProtectedPermissions" />
+    <uses-permission android:name="android.permission.TETHER_PRIVILEGED"
+        tools:ignore="ProtectedPermissions" />
+    <uses-permission android:name="android.permission.NETWORK_SETTINGS"
+        tools:ignore="ProtectedPermissions" />
+    <uses-permission android:name="moe.shizuku.manager.permission.API" />
 
     <!-- Workaround for Android 17+ cross profile loopback networking restrictions.
          This permission allows CMFA to connect to loopback addresses and ports bound
@@ -153,6 +164,11 @@
             android:exported="false"
             android:label="@string/settings" />
         <activity
+            android:name=".TetherSettingsActivity"
+            android:configChanges="uiMode"
+            android:exported="false"
+            android:label="Tether Settings" />
+        <activity
             android:name=".NetworkSettingsActivity"
             android:configChanges="uiMode"
             android:exported="false"
@@ -201,6 +217,25 @@
             android:exported="true"
             android:icon="@drawable/ic_logo_service"
             android:label="@string/launch_name"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
+        <!-- Tether proxy services -->
+        <service
+            android:name="com.github.kr328.clash.tether.TetherForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="shizuku_tether_proxy"/>
+        </service>
+        <service
+            android:name="com.github.kr328.clash.tether.TetherTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_logo_service"
+            android:label="Tether Proxy"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
             <intent-filter>
                 <action android:name="android.service.quicksettings.action.QS_TILE" />

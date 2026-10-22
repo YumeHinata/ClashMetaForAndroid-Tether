@@ -72,6 +72,15 @@ class HelpDesign(
                     openLink(Uri.parse(context.getString(R.string.meta_github_url)))
                 }
             }
+
+            clickable(
+                title = R.string.shizuku_tether_project,
+                summary = R.string.shizuku_tether_project_url
+            ) {
+                clicked {
+                    openLink(Uri.parse(context.getString(R.string.shizuku_tether_project_url)))
+                }
+            }
         }
 
         binding.content.addView(screen.root)

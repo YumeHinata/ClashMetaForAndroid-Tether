@@ -25,6 +25,9 @@ subprojects {
         mavenCentral()
         google()
         maven("https://raw.githubusercontent.com/MetaCubeX/maven-backup/main/releases")
+        flatDir {
+            dirs("${rootProject.projectDir}/shizuku-tether/libs")
+        }
     }
 
     val isApp = name == "app"
@@ -48,11 +51,12 @@ subprojects {
             if (isApp) {
                 val customApplicationId = queryConfigProperty("custom.application.id") as? String?
                 applicationId = customApplicationId.takeIf { it?.isNotBlank() == true } ?: "com.github.metacubex.clash"
+                buildConfigField("boolean", "ENABLE_CRASH_REPORTER", "false")
             }
 
             project.name.let { name ->
                 namespace = if (name == "app") "com.github.kr328.clash"
-                else "com.github.kr328.clash.$name"
+                else "com.github.kr328.clash.${name.replace("-", "")}"
             }
 
             minSdk = 21
@@ -171,6 +175,7 @@ subprojects {
             }
             named("debug") {
                 versionNameSuffix = ".debug"
+                isDebuggable = false
             }
         }
 

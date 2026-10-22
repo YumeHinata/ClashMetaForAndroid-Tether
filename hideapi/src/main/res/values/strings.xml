@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="launch_name_meta">Clash Meta</string>
+    <string name="launch_name_alpha">Clash Meta Alpha</string>
+    <string name="application_name_meta">Clash Meta for Android</string>
+    <string name="application_name_alpha">Clash Meta for Android Alpha</string>
+</resources>

@@ -68,6 +68,38 @@ APP package name is `com.github.metacubex.clash.meta`
 - Import a profile
   - URL Scheme `clash://install-config?url=<encoded URI>` or `clashmeta://install-config?url=<encoded URI>`
 
+### Shizuku Tether (Tether Proxy)
+
+CMFA includes a Shizuku Tether module that shares the proxy connection to downstream devices via WiFi hotspot, enabling other devices to access the internet through Clash's proxy without requiring root access.
+
+This implementation is inspired by and references the [Shizzi project](https://github.com/carlelieser/shizzi), which demonstrated the feasibility of using Android's Test Network API with Shizuku for proxy sharing. We extend our gratitude to the Shizzi developers for their pioneering work and open-source contributions.
+
+#### Key Features
+
+- **No Root Required**: Uses Shizuku's shell permissions to access system-level network APIs
+- **Automatic Lifecycle Management**: Intelligent monitoring and recovery system that automatically handles various scenarios:
+  - Detects and recovers from Shizuku service interruptions
+  - Automatically stops tether when the proxy service stops
+  - Maintains monitoring capability when hotspot is temporarily disabled
+  - Clean resource cleanup when the app is closed
+- **Hotspot Acceleration**: Seamlessly integrates with Android's WiFi hotspot to share proxy access with connected devices
+- **Stability Enhancements**: Includes fixes for native crashes and buffer management issues in high-traffic scenarios
+
+#### Requirements
+
+- **Shizuku** installed and running on the device
+- **Android 10+** (API 29) for TestNetworkManager API
+- **Android 12+** (API 32) recommended for `setPreferTestNetworks`
+
+See [shizuku-tether/README.md](shizuku-tether/README.md) for architecture details and build instructions.
+
+#### Build Extra Requirements
+
+In addition to the standard build requirements, building the Shizuku Tether module requires:
+
+- **gomobile** installed: `go install golang.org/x/mobile/cmd/gomobile@latest`
+- The gomobile bind task runs automatically during `preBuild`
+
 ### Contribution and Project Maintenance
 
 #### Meta Kernel

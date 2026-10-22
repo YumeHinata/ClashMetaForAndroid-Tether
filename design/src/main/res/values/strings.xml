@@ -227,6 +227,8 @@
     <string name="export_to_clipboard">Export to Clipboard</string>
 
     <string name="clash_meta_for_android">Clash Meta for Android</string>
+    <string name="shizuku_tether_project">Shizuku Tether (Shizzi)</string>
+    <string name="shizuku_tether_project_url" translatable="false">https://github.com/carlelieser/shizzi</string>
 
     <string name="document">Document</string>
     <string name="feedback">Feedback</string>
@@ -373,4 +375,9 @@
     <string name="shortcut_start_long">Start Clash service</string>
     <string name="shortcut_stop_short">Stop Clash</string>
     <string name="shortcut_stop_long">Stop Clash service</string>
+
+    <string name="tether_proxy">Shizuku Tether</string>
+    <string name="tether_proxy_summary">Share proxy via hotspot (requires Shizuku)</string>
+    <string name="tether_auto_start">Auto-start Tether</string>
+    <string name="tether_auto_start_summary">Start tether when CMFA opens</string>
 </resources>

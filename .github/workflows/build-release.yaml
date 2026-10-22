@@ -34,6 +34,9 @@ jobs:
           go-download-base-url: 'https://github.com/MetaCubeX/go/releases/download/build'
           go-version: '1.26'
 
+      - name: Install gomobile
+        run: go install golang.org/x/mobile/cmd/gomobile@latest
+
       - name: Apply Patches
         run: |
           cd $(go env GOROOT)
