@@ -1,6 +1,6 @@
 ## Clash Meta for Android
 
-A Graphical user interface of [Clash.Meta](https://github.com/MetaCubeX/Clash.Meta) for Android
+A rule-based tunnel for Android, with Shizuku Tether for root-free proxy sharing via WiFi hotspot.
 
 ### Feature
 
