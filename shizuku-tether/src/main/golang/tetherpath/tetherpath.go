@@ -21,7 +21,7 @@ import (
 	"gvisor.dev/gvisor/pkg/tcpip/transport/icmp"
 	"gvisor.dev/gvisor/pkg/tcpip/transport/tcp"
 	"gvisor.dev/gvisor/pkg/tcpip/transport/udp"
-	"gvisor.dev/gvisor/pkg/tcpip/waiter"
+	"gvisor.dev/gvisor/pkg/waiter"
 )
 
 const (
