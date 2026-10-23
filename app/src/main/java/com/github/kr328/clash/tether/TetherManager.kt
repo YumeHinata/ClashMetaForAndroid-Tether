@@ -139,6 +139,25 @@ object TetherManager {
                 return
             }
 
+            // Wait for Shizuku binder to be received in this process
+            if (!Shizuku.pingBinder()) {
+                TetherLogger.log("TetherManager", "Shizuku binder not received yet, waiting...")
+                // Register a one-shot listener to retry when binder is ready
+                val listener = Shizuku.OnBinderReceivedListener {
+                    Shizuku.removeBinderReceivedListener(this)
+                    // Retry start after binder is ready
+                    Handler(Looper.getMainLooper()).postDelayed({
+                        start(appCtx, isAutoStart)
+                    }, 500)
+                }
+                Shizuku.addBinderReceivedListener(listener)
+                updateState(TetherState(
+                    status = TetherStatus.WAITING_HOTSPOT,
+                    error = "Waiting for Shizuku binder...",
+                ))
+                return
+            }
+
             val compat = CompatibilityCheck.probe(appCtx)
             if (!compat.isSupported) {
                 updateState(TetherState(
