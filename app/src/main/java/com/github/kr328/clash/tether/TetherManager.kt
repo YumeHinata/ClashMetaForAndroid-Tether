@@ -129,6 +129,16 @@ object TetherManager {
                 return
             }
 
+            // Check Shizuku readiness before attempting to bind
+            val shizukuState = ShizukuGate.resolveState(appCtx)
+            if (shizukuState !is ShizukuState.Ready) {
+                updateState(TetherState(
+                    status = TetherStatus.ERROR,
+                    error = "Shizuku not ready: $shizukuState",
+                ))
+                return
+            }
+
             val compat = CompatibilityCheck.probe(appCtx)
             if (!compat.isSupported) {
                 updateState(TetherState(
