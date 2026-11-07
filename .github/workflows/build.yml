@@ -34,12 +34,10 @@ jobs:
         echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/25.2.9519653" >> $GITHUB_ENV
 
     - name: Verify pre-built AAR exists
-    - name: Debug AAR location
       run: |
         echo "Current dir: $(pwd)"
         echo "AAR path: $(ls -la shizuku-tether/libs/tetherpath.aar 2>&1)"
         echo "All files in libs: $(ls -la shizuku-tether/libs/ 2>&1)"
-      run: |
         if [ ! -f shizuku-tether/libs/tetherpath.aar ]; then
           echo "ERROR: Pre-built tetherpath.aar not found!"
           echo "Please build it locally with: cd shizuku-tether/src/main/golang/tetherpath && gomobile bind -v -target=android -androidapi=21 -o=../../libs/tetherpath.aar ."
