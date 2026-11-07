@@ -33,7 +33,10 @@ repositories {
 // gomobile bind task - builds Go code into AAR
 val gomobileBind by tasks.registering(Exec::class) {
     workingDir = golangSource
-    
+
+    // Skip when a pre-built AAR is already committed to the repo (CI without Go).
+    onlyIf { !gomobileOutput.exists() }
+
     val gopath = System.getenv("GOPATH") ?: "${System.getProperty("user.home")}/go"
     val gomobilePath = "$gopath/bin/gomobile"
     val androidSdkPath = android.sdkDirectory.absolutePath
