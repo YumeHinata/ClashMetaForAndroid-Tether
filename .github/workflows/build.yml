@@ -1,4 +1,4 @@
-name: Build APK (Two-Stage)
+name: Build APK
 
 on:
   workflow_dispatch:
@@ -8,57 +8,7 @@ on:
     branches: [ main, master ]
 
 jobs:
-  # Stage 1: Build tetherpath.aar via gomobile
-  build-aar:
-    runs-on: ubuntu-latest
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      with:
-        submodules: recursive
-        fetch-depth: 0
-
-    - name: Setup Go
-      uses: actions/setup-go@v5
-      with:
-        go-version: '1.23'
-        cache: false
-
-    - name: Install gomobile
-      run: |
-        go install golang.org/x/mobile/cmd/gomobile@latest
-        go install golang.org/x/mobile/cmd/gobind@latest
-        echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
-        gomobile init
-
-    - name: Cache gomobile output
-      id: cache-aar
-      uses: actions/cache@v4
-      with:
-        path: shizuku-tether/libs/tetherpath.aar
-        key: ${{ runner.os }}-aar-${{ hashFiles('shizuku-tether/src/main/golang/**') }}
-
-    - name: Build tetherpath AAR with gomobile
-      if: steps.cache-aar.outputs.cache-hit != 'true'
-      run: |
-        TETHERPATH_LIBS_DIR=$(pwd)/shizuku-tether/libs
-        mkdir -p "$TETHERPATH_LIBS_DIR"
-        cd shizuku-tether/src/main/golang/tetherpath
-        gomobile bind -v -target=android -androidapi=21 -o="$TETHERPATH_LIBS_DIR/tetherpath.aar" .
-        ls -lh "$TETHERPATH_LIBS_DIR/"
-
-    - name: Upload AAR artifact
-      if: steps.cache-aar.outputs.cache-hit != 'true'
-      uses: actions/upload-artifact@v4
-      with:
-        name: tetherpath-aar
-        path: shizuku-tether/libs/tetherpath.aar
-        retention-days: 1
-
-  # Stage 2: Build full APK using cached/downloaded AAR
-  build-apk:
-    needs: build-aar
+  build:
     runs-on: ubuntu-latest
     
     steps:
@@ -83,27 +33,14 @@ jobs:
         echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/25.2.9519653" >> $GITHUB_ENV
         echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/25.2.9519653" >> $GITHUB_ENV
 
-    - name: Download AAR from Stage 1 or use cache
-      uses: actions/download-artifact@v4
-      with:
-        name: tetherpath-aar
-        path: shizuku-tether/libs/
-      continue-on-error: true
-
-    - name: Fallback: rebuild AAR if download failed
-      if: ${{ !env.ACT && !steps.download.outputs.download-path }}
+    - name: Verify pre-built AAR exists
       run: |
-        go install golang.org/x/mobile/cmd/gomobile@latest
-        echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
-        gomobile init
-        TETHERPATH_LIBS_DIR=$(pwd)/shizuku-tether/libs
-        mkdir -p "$TETHERPATH_LIBS_DIR"
-        cd shizuku-tether/src/main/golang/tetherpath
-        gomobile bind -v -target=android -androidapi=21 -o="$TETHERPATH_LIBS_DIR/tetherpath.aar" .
-
-    - name: Verify AAR exists
-      run: |
-        ls -lh shizuku-tether/libs/tetherpath.aar || { echo "AAR not found!"; exit 1; }
+        if [ ! -f shizuku-tether/libs/tetherpath.aar ]; then
+          echo "ERROR: Pre-built tetherpath.aar not found!"
+          echo "Please build it locally with: cd shizuku-tether/src/main/golang/tetherpath && gomobile bind -v -target=android -androidapi=21 -o=../../libs/tetherpath.aar ."
+          exit 1
+        fi
+        ls -lh shizuku-tether/libs/tetherpath.aar
 
     - name: Cache Gradle packages
       uses: actions/cache@v4
