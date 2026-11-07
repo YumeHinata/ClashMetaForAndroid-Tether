@@ -3,7 +3,7 @@ package com.github.kr328.clash
 import android.widget.Toast
 import com.github.kr328.clash.design.TetherSettingsDesign
 import com.google.android.material.switchmaterial.SwitchMaterial
-import com.github.kr328.clash.tether.TetherForegroundService
+import com.github.kr328.clash.tether.TetherController
 import com.github.kr328.clash.tether.TetherManager
 import com.github.kr328.clash.tether.TetherStatus
 import kotlinx.coroutines.isActive
@@ -66,16 +66,15 @@ class TetherSettingsActivity : BaseActivity<TetherSettingsDesign>() {
 
                             when (currentState) {
                                 TetherStatus.CONNECTED, TetherStatus.WAITING_HOTSPOT -> {
-                                    // Stop / Cancel
-                                    TetherForegroundService.stop(this@TetherSettingsActivity)
+                                    // Stop / Cancel via controller so desired-state and
+                                    // the Shizuku recovery monitor stay in sync.
+                                    TetherController.setEnabled(this@TetherSettingsActivity, false, byUser = true)
                                     val msg = if (currentState == TetherStatus.WAITING_HOTSPOT) "Cancelled" else "Tether stopped"
                                     Toast.makeText(this@TetherSettingsActivity, msg, Toast.LENGTH_SHORT).show()
                                 }
                                 else -> {
-                                    // IDLE or ERROR -> start acceleration
-                                    // Register proxy observer before starting
-                                    TetherManager.registerProxyObserver()
-                                    TetherForegroundService.start(this@TetherSettingsActivity)
+                                    // IDLE or ERROR -> start via controller
+                                    TetherController.setEnabled(this@TetherSettingsActivity, true, byUser = true)
                                     Toast.makeText(this@TetherSettingsActivity, "Tether starting...", Toast.LENGTH_SHORT).show()
                                 }
                             }
@@ -86,7 +85,7 @@ class TetherSettingsActivity : BaseActivity<TetherSettingsDesign>() {
                             // If just enabled and proxy is running, start tether
                             if (newState && com.github.kr328.clash.remote.Remote.broadcasts.clashRunning
                                 && TetherManager.state.value.status == TetherStatus.IDLE) {
-                                TetherForegroundService.start(this@TetherSettingsActivity)
+                                TetherController.setEnabled(this@TetherSettingsActivity, true, byUser = true)
                             }
                         }
                     }

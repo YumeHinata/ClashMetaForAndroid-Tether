@@ -1,19 +1,16 @@
 package com.github.kr328.clash.tether
 
 import android.content.Context
-import com.github.kr328.clash.common.Global
-import com.github.kr328.clash.remote.Remote
+import com.github.kr328.clash.tether.host.ProxyStateCallback
+import com.github.kr328.clash.tether.host.TetherHostProvider
 import com.github.kr328.clash.tether.shizuku.ShizukuGate
 import com.github.kr328.clash.tether.shizuku.ShizukuState
 import com.github.kr328.clash.tether.shizuku.TetherClient
 import com.github.kr328.clash.tether.testnetwork.CompatibilityCheck
-import android.os.Handler
-import android.os.Looper
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import java.util.UUID
 
 enum class TetherStatus {
     IDLE,
@@ -45,6 +42,12 @@ object TetherManager {
     private var monitorJob: Job? = null
     private val monitorScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
+    // While a startTethering is in flight the shell restarts the downstream, which flips
+    // the hotspot off/on. Ignore those transient transitions so polling doesn't trigger a
+    // second (overlapping) start.
+    @Volatile
+    private var startInFlightUntil: Long = 0
+
     private const val PREF_NAME = "tether"
     private const val KEY_AUTO_START = "auto_start"
     private const val HOTSPOT_POLL_INTERVAL_MS = 3_000L
@@ -62,34 +65,28 @@ object TetherManager {
     @Volatile
     private var proxyObserverRegistered = false
 
-    private val proxyObserver = object : com.github.kr328.clash.remote.Broadcasts.Observer {
-        override fun onServiceRecreated() {}
-        override fun onProfileChanged() {}
-        override fun onProfileUpdateCompleted(uuid: UUID?) {}
-        override fun onProfileUpdateFailed(uuid: UUID?, reason: String?) {}
-        override fun onProfileLoaded() {}
-
-        override fun onStarted() {
-            TetherLogger.log("TetherManager", "Proxy started (Broadcasts.onStarted)")
-            TetherController.onProxyStarted(Global.application)
+    private val proxyObserver = object : ProxyStateCallback {
+        override fun onProxyStarted() {
+            TetherLogger.log("TetherManager", "Proxy started (host.onProxyStarted)")
+            TetherController.onProxyStarted(TetherHostProvider.host.applicationContext)
         }
 
-        override fun onStopped(cause: String?) {
-            TetherLogger.log("TetherManager", "Proxy stopped (Broadcasts.onStopped, cause=$cause)")
-            TetherController.onProxyStopped(Global.application)
+        override fun onProxyStopped(cause: String?) {
+            TetherLogger.log("TetherManager", "Proxy stopped (host.onProxyStopped, cause=$cause)")
+            TetherController.onProxyStopped(TetherHostProvider.host.applicationContext)
         }
     }
 
     fun registerProxyObserver() {
         if (proxyObserverRegistered) return
-        Remote.broadcasts.addObserver(proxyObserver)
+        TetherHostProvider.host.observeProxyState(proxyObserver)
         proxyObserverRegistered = true
         TetherLogger.log("TetherManager", "Proxy observer registered")
     }
 
     fun unregisterProxyObserver() {
         if (!proxyObserverRegistered) return
-        Remote.broadcasts.removeObserver(proxyObserver)
+        TetherHostProvider.host.removeProxyStateObserver(proxyObserver)
         proxyObserverRegistered = false
         TetherLogger.log("TetherManager", "Proxy observer unregistered")
     }
@@ -106,6 +103,14 @@ object TetherManager {
     fun setAutoStartEnabled(context: Context, enabled: Boolean) {
         val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
         prefs.edit().putBoolean(KEY_AUTO_START, enabled).apply()
+        // Register the proxy observer as soon as auto-start is turned on, so a proxy
+        // start that happens later (while this app is already running) is caught.
+        if (enabled) {
+            registerProxyObserver()
+            TetherController.ensureAutoStartMonitor(context)
+        } else {
+            TetherController.stopAutoStartMonitor()
+        }
     }
 
     // ------------------------------------------------------------------
@@ -280,6 +285,13 @@ object TetherManager {
             return
         }
 
+        // Gate: require proxy + Shizuku both ready before touching the shell service.
+        if (!TetherHostProvider.host.isProxyRunning) {
+            TetherLogger.log("TetherManager", "Proxy not running, deferring start")
+            updateState(_state.value.copy(status = TetherStatus.WAITING_HOTSPOT))
+            return
+        }
+
         updateState(_state.value.copy(status = TetherStatus.CONNECTED, error = ""))
         TetherLogger.log("TetherManager", "State -> CONNECTED")
 
@@ -297,6 +309,8 @@ object TetherManager {
         }
 
         try {
+            // Suppress transient hotspot off/on from the shell's downstream restart.
+            startInFlightUntil = System.currentTimeMillis() + 20_000
             service.startTethering(false, 0)
             TetherLogger.log("TetherManager", "startTethering() OK")
             updateState(_state.value.copy(upstreamInterface = service.upstreamInterface))
@@ -391,7 +405,11 @@ object TetherManager {
                     if (isOn != prev) {
                         TetherLogger.log("TetherManager", "Hotspot changed: $prev -> $isOn")
                         updateState(_state.value.copy(hotspotOn = isOn))
-                        handleHotspotStateChange(context, isOn, gen)
+                        if (System.currentTimeMillis() < startInFlightUntil) {
+                            TetherLogger.log("TetherManager", "Ignoring hotspot change during start-in-flight")
+                        } else {
+                            handleHotspotStateChange(context, isOn, gen)
+                        }
                     }
                 } catch (e: Exception) {
                     TetherLogger.logError("TetherManager", "Polling error", e)

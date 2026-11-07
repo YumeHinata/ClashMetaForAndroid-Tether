@@ -10,11 +10,13 @@
     <uses-permission android:name="moe.shizuku.manager.permission.API" />
 
     <application>
+        <!-- The Shizuku server (shell uid 2000 in ADB mode, uid 0 in root mode) opens this
+             provider to push its binder; only platform-privileged uids hold this permission. -->
         <provider
             android:name="rikka.shizuku.ShizukuProvider"
             android:authorities="${applicationId}.shizuku"
             android:exported="true"
             android:multiprocess="false"
-            android:permission="moe.shizuku.manager.permission.API" />
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
     </application>
 </manifest>

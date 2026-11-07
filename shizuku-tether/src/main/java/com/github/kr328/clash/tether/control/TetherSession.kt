@@ -22,6 +22,7 @@ class TetherSession(
     private var lifetimeToken: Binder? = null
     private var forwarderStarted = false
     private var keepAliveCallback: ConnectivityManager.NetworkCallback? = null
+    private var boundToVpn = false
 
     val tunFd: Int? get() = tunHandle?.fileDescriptor?.fd
     val interfaceName: String? get() = tunHandle?.interfaceName
@@ -67,9 +68,21 @@ class TetherSession(
         // Step 4: Register keep-alive callback
         requestKeepAlive(net)
 
-        // Step 5: Find VPN network handle for socket binding
-        val vpnHandle = findVpnNetworkHandle()
-        android.util.Log.i(TAG, "VPN network handle: $vpnHandle")
+        // Step 5: Route forwarder traffic through the Clash VPN network so that
+        // tethered clients actually egress via the proxy (not the shell process's
+        // default network). Two complementary mechanisms:
+        //   (a) bindProcessToNetwork(vpn) - public API 23+, binds every socket this
+        //       shell process dials to the VPN network. Robust on Android 13-16.
+        //   (b) pass the VPN network handle to the native forwarder for per-socket
+        //       pinning via android_setsocknetwork() (libandroid.so) as a fallback.
+        val vpnNetwork = findVpnNetwork()
+        if (vpnNetwork != null) {
+            bindProcessToVpn(vpnNetwork)
+        } else {
+            android.util.Log.w(TAG, "No VPN network found; tethered traffic may bypass the proxy")
+        }
+        val vpnHandle = vpnNetwork?.let { getNetworkHandle(it) } ?: 0L
+        android.util.Log.i(TAG, "VPN network=$vpnNetwork handle=$vpnHandle processBound=$boundToVpn")
 
         // Step 6: Start gVisor data forwarder
         try {
@@ -88,6 +101,11 @@ class TetherSession(
         if (forwarderStarted) {
             TetherPathBridge.stop()
             forwarderStarted = false
+        }
+
+        if (boundToVpn) {
+            runCatching { connectivityManager.bindProcessToNetwork(null) }
+            boundToVpn = false
         }
 
         keepAliveCallback?.let { cb ->
@@ -160,25 +178,34 @@ class TetherSession(
     }.getOrDefault(7)
 
     /**
-     * Find the VPN network and return its handle.
-     * The handle is used by gVisor to pin sockets to the VPN network.
+     * Find the Clash VPN network (TRANSPORT_VPN) among all system networks.
      */
-    private fun findVpnNetworkHandle(): Long {
+    private fun findVpnNetwork(): Network? {
         return try {
             val transportVpn = resolveTransportVpn()
-            val vpnNetwork = connectivityManager.allNetworks.firstOrNull { network ->
+            connectivityManager.allNetworks.firstOrNull { network ->
                 val caps = connectivityManager.getNetworkCapabilities(network)
                 caps?.hasTransport(transportVpn) == true
             }
-            if (vpnNetwork != null) {
-                getNetworkHandle(vpnNetwork)
-            } else {
-                android.util.Log.w(TAG, "No VPN network found")
-                0L
-            }
         } catch (e: Exception) {
-            android.util.Log.w(TAG, "Failed to find VPN network handle: ${e.message}")
-            0L
+            android.util.Log.w(TAG, "findVpnNetwork failed: ${e.message}")
+            null
+        }
+    }
+
+    /**
+     * Bind this shell process to the VPN network so that all sockets created
+     * afterwards (i.e. the gVisor forwarder's upstream dials) egress through
+     * Clash. Public API since Android 6.0 (API 23); works on Android 13-16.
+     */
+    private fun bindProcessToVpn(network: Network) {
+        boundToVpn = try {
+            val ok = connectivityManager.bindProcessToNetwork(network)
+            if (!ok) android.util.Log.w(TAG, "bindProcessToNetwork returned false")
+            ok
+        } catch (e: Exception) {
+            android.util.Log.w(TAG, "bindProcessToNetwork failed: ${e.message}")
+            false
         }
     }
 
@@ -190,14 +217,17 @@ class TetherSession(
     }.getOrDefault(NetworkCapabilities.TRANSPORT_VPN)
 
     /**
-     * Get the network handle using reflection (hidden API).
+     * Get the network handle via the hidden Network.getNetworkHandle() method.
+     * NOTE: this lives on android.net.Network, NOT on ConnectivityManager.
+     * Requires HiddenApiBypass (enabled in the shell service). Returns 0 on failure,
+     * in which case process-level binding (bindProcessToVpn) still routes traffic.
      */
     private fun getNetworkHandle(network: Network): Long {
         return try {
-            val method = connectivityManager.javaClass.getMethod("getNetworkHandle", Network::class.java)
-            method.invoke(connectivityManager, network) as Long
+            val method = Network::class.java.getMethod("getNetworkHandle")
+            method.invoke(network) as Long
         } catch (e: Exception) {
-            android.util.Log.w(TAG, "getNetworkHandle failed: ${e.message}")
+            android.util.Log.w(TAG, "Network.getNetworkHandle failed: ${e.message}")
             0L
         }
     }

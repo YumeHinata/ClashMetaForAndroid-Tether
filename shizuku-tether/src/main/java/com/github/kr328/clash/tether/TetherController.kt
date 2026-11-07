@@ -1,17 +1,13 @@
 package com.github.kr328.clash.tether
 
 import android.content.Context
-import com.github.kr328.clash.common.Global
-import com.github.kr328.clash.remote.Remote
+import com.github.kr328.clash.tether.host.TetherHostProvider
 import com.github.kr328.clash.tether.shizuku.ShizukuGate
 import com.github.kr328.clash.tether.shizuku.ShizukuState
-import android.os.Handler
-import android.os.Looper
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import java.util.UUID
 
 /**
  * Unified tether controller.
@@ -24,6 +20,7 @@ object TetherController {
     private const val KEY_ENABLED = "enabled"
     private const val KEY_AUTO_START = "auto_start"
     private const val SHIZUKU_CHECK_INTERVAL_MS = 10_000L
+    private const val AUTO_CHECK_INTERVAL_MS = 4_000L
 
     private val _state = MutableStateFlow(TetherState())
     val state: StateFlow<TetherState> = _state.asStateFlow()
@@ -37,6 +34,10 @@ object TetherController {
     @Volatile
     private var isRunning = false
 
+    // Set by a manual stop; cleared by a manual enable or a new proxy-start event.
+    @Volatile
+    private var userStopped = false
+
     // ------------------------------------------------------------------
     // Public API
     // ------------------------------------------------------------------
@@ -46,10 +47,16 @@ object TetherController {
      * Called by both manual switch and auto-start.
      * Persists the desired state and handles lifecycle.
      */
-    fun setEnabled(context: Context, enabled: Boolean) {
+    fun setEnabled(context: Context, enabled: Boolean, byUser: Boolean = false) {
         val appCtx = context.applicationContext
         desiredEnabled = enabled
-        
+        if (enabled) {
+            userStopped = false
+        } else if (byUser) {
+            // A manual stop sticks until the next proxy start or manual enable.
+            userStopped = true
+        }
+
         // Persist the desired state
         val prefs = appCtx.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
         prefs.edit().putBoolean(KEY_ENABLED, enabled).apply()
@@ -74,8 +81,9 @@ object TetherController {
      */
     fun onProxyStarted(context: Context) {
         if (!isAutoStartEnabled(context)) return
+        userStopped = false  // a new proxy session re-arms auto-start
         if (desiredEnabled) return  // Already enabled
-        
+
         setEnabled(context, true)
     }
 
@@ -84,7 +92,7 @@ object TetherController {
      */
     fun onProxyStopped(context: Context) {
         if (!desiredEnabled) return
-        
+
         setEnabled(context, false)
     }
 
@@ -98,8 +106,7 @@ object TetherController {
     }
 
     fun setAutoStartEnabled(context: Context, enabled: Boolean) {
-        val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-        prefs.edit().putBoolean(KEY_AUTO_START, enabled).apply()
+        TetherManager.setAutoStartEnabled(context, enabled)
     }
 
     // ------------------------------------------------------------------
@@ -145,9 +152,10 @@ object TetherController {
                 
                 val shizukuState = ShizukuGate.resolveState(context)
                 val tetherStatus = _state.value.status
-                
-                // If Shizuku is ready but tether is in ERROR or IDLE, restart
-                if (shizukuState is ShizukuState.Ready && 
+
+                // Only recover when proxy is actually running too.
+                if (shizukuState is ShizukuState.Ready &&
+                    TetherHostProvider.host.isProxyRunning &&
                     (tetherStatus == TetherStatus.ERROR || tetherStatus == TetherStatus.IDLE)) {
                     TetherLogger.log("TetherController", "Shizuku recovered, restarting tether")
                     TetherForegroundService.start(context)
@@ -159,6 +167,58 @@ object TetherController {
     private fun stopShizukuMonitor() {
         shizukuMonitorJob?.cancel()
         shizukuMonitorJob = null
+    }
+
+    // ------------------------------------------------------------------
+    // Auto-start monitor: start tether only when proxy + Shizuku + hotspot all ready
+    // ------------------------------------------------------------------
+
+    private var autoMonitorJob: Job? = null
+    private var lastHotspotOn = false
+    private var lastProxyRunning = false
+
+    /**
+     * Runs while auto-start is enabled. Reacts to proxy-off->on and hotspot-off->on edges
+     * and starts the tether only when proxy + Shizuku + hotspot are all ready.
+     * Edge-triggered so a manual stop sticks; the observer remains the fast path.
+     */
+    fun ensureAutoStartMonitor(context: Context) {
+        if (autoMonitorJob?.isActive == true) return
+        val appCtx = context.applicationContext
+        lastHotspotOn = runCatching { HotspotMonitor.isHotspotEnabled(appCtx) }.getOrDefault(false)
+        lastProxyRunning = runCatching { TetherHostProvider.host.isProxyRunning }.getOrDefault(false)
+        autoMonitorJob = scope.launch {
+            while (isActive) {
+                delay(AUTO_CHECK_INTERVAL_MS)
+                if (!isAutoStartEnabled(appCtx)) break
+
+                val hotspotOn = runCatching { HotspotMonitor.isHotspotEnabled(appCtx) }.getOrDefault(false)
+                val proxyOn = runCatching { TetherHostProvider.host.isProxyRunning }.getOrDefault(false)
+                val risingHotspot = hotspotOn && !lastHotspotOn
+                val risingProxy = proxyOn && !lastProxyRunning
+                lastHotspotOn = hotspotOn
+                lastProxyRunning = proxyOn
+
+                if (desiredEnabled || userStopped) continue
+
+                val ready = proxyOn && hotspotOn && runCatching {
+                    ShizukuGate.resolveState(appCtx) is ShizukuState.Ready
+                }.getOrDefault(false)
+
+                val st = _state.value.status
+                if (ready && (risingProxy || risingHotspot) &&
+                    (st == TetherStatus.IDLE || st == TetherStatus.ERROR)) {
+                    TetherLogger.log("TetherController", "Auto-start: proxy/hotspot edge with all prerequisites ready")
+                    setEnabled(appCtx, true)
+                }
+            }
+            autoMonitorJob = null
+        }
+    }
+
+    fun stopAutoStartMonitor() {
+        autoMonitorJob?.cancel()
+        autoMonitorJob = null
     }
 
     // ------------------------------------------------------------------

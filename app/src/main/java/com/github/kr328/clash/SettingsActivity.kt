@@ -27,7 +27,7 @@ class SettingsActivity : BaseActivity<SettingsDesign>() {
                         SettingsDesign.Request.StartMetaFeature ->
                             startActivity(MetaFeatureSettingsActivity::class.intent)
                         SettingsDesign.Request.ToggleTether ->
-                            startActivity(TetherSettingsActivity::class.intent)
+                            com.github.kr328.clash.tether.TetherBootstrap.openSettings(this@SettingsActivity)
                     }
                 }
             }

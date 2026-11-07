@@ -2,6 +2,7 @@ package com.github.kr328.clash.tether.control
 
 import android.content.Context
 import android.os.Handler
+import android.os.HandlerThread
 import android.os.Looper
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executor
@@ -37,6 +38,10 @@ object DownstreamControl {
     private const val SUCCESS = "onTetheringStarted"
 
     fun startWifiTethering(context: Context): Pair<Boolean, String> {
+        // Prefer TetheringManager.startTethering(TetheringRequest): the proper hidden API
+        // that triggers upstream selection with setPreferTestNetworks. Fall back to
+        // WifiManager.startTetheredHotspot only if the TetheringManager path fails
+        // (some OEM builds reject the shell UID).
         val viaTethering = startViaTetheringManager(context)
         if (viaTethering.first) return viaTethering
 
@@ -132,7 +137,7 @@ object DownstreamControl {
             Executor::class.java,
             callbackClass,
         )
-        method.invoke(tetheringManager, request, mainExecutor(), callback)
+        method.invoke(tetheringManager, request, callbackExecutor(), callback)
     }
 
     private fun createStartCallback(latch: CountDownLatch, result: Array<String>): Any? =
@@ -169,9 +174,30 @@ object DownstreamControl {
         }
     }
 
-    private fun mainExecutor(): Executor {
-        val handler = Handler(Looper.getMainLooper())
+    @Volatile
+    private var callbackThread: HandlerThread? = null
+
+    private fun callbackExecutor(): Executor {
+        // Reuse existing thread or create a new one; avoid leaking HandlerThreads
+        // on repeated start/stop cycles.
+        callbackThread?.let { 
+            if (it.looper.thread.isAlive) {
+                val handler = Handler(it.looper)
+                return Executor { command -> handler.post(command) }
+            }
+        }
+        val thread = HandlerThread("TetheringCallback").apply { start() }
+        callbackThread = thread
+        val handler = Handler(thread.looper)
         return Executor { command -> handler.post(command) }
+    }
+
+    fun shutdownCallbackThread() {
+        callbackThread?.let { 
+            runCatching { it.looper.quitSafely() }
+            runCatching { it.interrupt() }
+        }
+        callbackThread = null
     }
 
     private fun getTetheringManager(context: Context): Any? {

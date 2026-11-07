@@ -20,9 +20,9 @@ class TetherTileService : TileService() {
         if (state.status == TetherStatus.CONNECTED
             || state.status == TetherStatus.WAITING_HOTSPOT
         ) {
-            TetherForegroundService.stop(this)
+            TetherController.setEnabled(this, false, byUser = true)
         } else {
-            TetherForegroundService.start(this)
+            TetherController.setEnabled(this, true, byUser = true)
         }
 
         updateTile()

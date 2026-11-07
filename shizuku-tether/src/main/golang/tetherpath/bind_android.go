@@ -16,17 +16,29 @@ static int _dlsym_attempted = 0;
 static void ensure_setsocknetwork_loaded() {
     if (_dlsym_attempted) return;
     _dlsym_attempted = 1;
-    
-    void* handle = dlopen("libc.so", RTLD_NOW);
+
+    // android_setsocknetwork() is an NDK symbol exported by libandroid.so
+    // (declared in <android/multinetwork.h>), NOT by libc.so. Resolve it from
+    // libandroid.so first, then fall back to the global symbol table, which
+    // finds it when libnetd_client/libandroid are already loaded into the
+    // (Shizuku shell) process. This is stable across Android 13-16.
+    void* handle = dlopen("libandroid.so", RTLD_NOW | RTLD_NOLOAD);
     if (!handle) {
-        __android_log_print(ANDROID_LOG_ERROR, "TetherPath", "dlopen libc.so failed: %s", dlerror());
-        return;
+        handle = dlopen("libandroid.so", RTLD_NOW);
     }
-    _setsocknetwork = (setsocknetwork_func)dlsym(handle, "android_setsocknetwork");
+    if (handle) {
+        _setsocknetwork = (setsocknetwork_func)dlsym(handle, "android_setsocknetwork");
+    }
     if (!_setsocknetwork) {
-        __android_log_print(ANDROID_LOG_WARN, "TetherPath", "android_setsocknetwork not available (expected on Android 16+)");
+        _setsocknetwork = (setsocknetwork_func)dlsym(RTLD_DEFAULT, "android_setsocknetwork");
     }
-    dlclose(handle);
+    if (!_setsocknetwork) {
+        __android_log_print(ANDROID_LOG_WARN, "TetherPath",
+            "android_setsocknetwork unavailable; falling back to process-level network binding");
+    } else {
+        __android_log_print(ANDROID_LOG_INFO, "TetherPath", "android_setsocknetwork resolved");
+    }
+    // Intentionally no dlclose(): the symbol must stay valid for the process lifetime.
 }
 
 static int call_setsocknetwork(net_handle_t net, int fd) {

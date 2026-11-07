@@ -1,17 +1,64 @@
-name: Build APK
+name: Build APK (Two-Stage)
 
 on:
-  # 手动触发
   workflow_dispatch:
-  # 推送到特定分支时触发（可选）
   push:
     branches: [ main, master, feature/* ]
-  # Pull Request 时触发（可选）
   pull_request:
     branches: [ main, master ]
 
 jobs:
-  build:
+  # Stage 1: Build tetherpath.aar via gomobile
+  build-aar:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+        fetch-depth: 0
+
+    - name: Setup Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.23'
+        cache: false
+
+    - name: Install gomobile
+      run: |
+        go install golang.org/x/mobile/cmd/gomobile@latest
+        go install golang.org/x/mobile/cmd/gobind@latest
+        echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
+        gomobile init
+
+    - name: Cache gomobile output
+      id: cache-aar
+      uses: actions/cache@v4
+      with:
+        path: shizuku-tether/libs/tetherpath.aar
+        key: ${{ runner.os }}-aar-${{ hashFiles('shizuku-tether/src/main/golang/**') }}
+
+    - name: Build tetherpath AAR with gomobile
+      if: steps.cache-aar.outputs.cache-hit != 'true'
+      run: |
+        TETHERPATH_LIBS_DIR=$(pwd)/shizuku-tether/libs
+        mkdir -p "$TETHERPATH_LIBS_DIR"
+        cd shizuku-tether/src/main/golang/tetherpath
+        gomobile bind -v -target=android -androidapi=21 -o="$TETHERPATH_LIBS_DIR/tetherpath.aar" .
+        ls -lh "$TETHERPATH_LIBS_DIR/"
+
+    - name: Upload AAR artifact
+      if: steps.cache-aar.outputs.cache-hit != 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: tetherpath-aar
+        path: shizuku-tether/libs/tetherpath.aar
+        retention-days: 1
+
+  # Stage 2: Build full APK using cached/downloaded AAR
+  build-apk:
+    needs: build-aar
     runs-on: ubuntu-latest
     
     steps:
@@ -29,33 +76,34 @@ jobs:
 
     - name: Setup Android SDK
       run: |
-        # GitHub Actions ubuntu-latest already has Android SDK installed
-        # Set environment variables for Android SDK
         echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
         echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
-        
-        # Install required SDK components including NDK
         yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
-        $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-34" "build-tools;34.0.0" "platform-tools" "ndk;25.2.9519653"
-        
-        # Set NDK path
+        $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools" "ndk;25.2.9519653"
         echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/25.2.9519653" >> $GITHUB_ENV
         echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/25.2.9519653" >> $GITHUB_ENV
 
-    - name: Setup Go
-      uses: actions/setup-go@v5
+    - name: Download AAR from Stage 1 or use cache
+      uses: actions/download-artifact@v4
       with:
-        go-version: '1.23'
-        cache: false
+        name: tetherpath-aar
+        path: shizuku-tether/libs/
+      continue-on-error: true
 
-    - name: Install gomobile
+    - name: Fallback: rebuild AAR if download failed
+      if: ${{ !env.ACT && !steps.download.outputs.download-path }}
       run: |
         go install golang.org/x/mobile/cmd/gomobile@latest
-        go install golang.org/x/mobile/cmd/gobind@latest
         echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
-        
-        # Initialize gomobile
         gomobile init
+        TETHERPATH_LIBS_DIR=$(pwd)/shizuku-tether/libs
+        mkdir -p "$TETHERPATH_LIBS_DIR"
+        cd shizuku-tether/src/main/golang/tetherpath
+        gomobile bind -v -target=android -androidapi=21 -o="$TETHERPATH_LIBS_DIR/tetherpath.aar" .
+
+    - name: Verify AAR exists
+      run: |
+        ls -lh shizuku-tether/libs/tetherpath.aar || { echo "AAR not found!"; exit 1; }
 
     - name: Cache Gradle packages
       uses: actions/cache@v4
@@ -68,60 +116,24 @@ jobs:
           ${{ runner.os }}-gradle-
 
     - name: Create local.properties
-      run: |
-        echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
+      run: echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
 
     - name: Create signing.properties (debug keystore)
       run: |
-        # 删除可能存在的旧 keystore
         rm -f release.keystore debug.keystore
-        
-        # 生成临时 release keystore（用于 CI 签名）
         keytool -genkey -v -keystore release.keystore -alias androiddebugkey \
           -keyalg RSA -keysize 2048 -validity 10000 \
           -storepass android -keypass android \
           -dname "CN=Android Debug,O=Android,C=US"
-        
-        # 创建签名配置
         cat > signing.properties << EOF
         keystore.path=release.keystore
         keystore.password=android
         key.alias=androiddebugkey
         key.password=android
         EOF
-        
-        echo "=== Keystore created ==="
-        ls -lh release.keystore
 
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
-
-    - name: Build tetherpath AAR with gomobile
-      run: |
-        # Build the Go library into AAR before Gradle dependency resolution
-        echo "=== Starting in: $(pwd) ==="
-        TETHERPATH_LIBS_DIR=$(pwd)/shizuku-tether/libs
-        echo "=== Output directory: $TETHERPATH_LIBS_DIR ==="
-        mkdir -p "$TETHERPATH_LIBS_DIR"
-        echo "=== Created directory, listing: ==="
-        ls -la shizuku-tether/
-        
-        echo "=== Changing to golang source directory ==="
-        cd shizuku-tether/src/main/golang/tetherpath
-        echo "=== Now in: $(pwd) ==="
-        
-        echo "=== Running gomobile bind ==="
-        gomobile bind -v -target=android -androidapi=21 -o="$TETHERPATH_LIBS_DIR/tetherpath.aar" .
-        
-        echo "=== Gomobile exit code: $? ==="
-        echo "=== Checking if AAR exists ==="
-        ls -lh "$TETHERPATH_LIBS_DIR/"
-        
-        echo "=== Going back to project root ==="
-        cd ../../../../..
-        echo "=== Now in: $(pwd) ==="
-        echo "=== Final check ==="
-        ls -lh shizuku-tether/libs/
 
     - name: Build with Gradle
       run: ./gradlew app:assembleMetaDebug --no-daemon
@@ -177,17 +189,6 @@ jobs:
         name: cmfa-meta-debug-universal
         path: app/build/outputs/apk/meta/debug/*universal*.apk
         retention-days: 30
-        if-no-files-found: ignore
-
-    - name: Upload build reports
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: build-reports-${{ github.sha }}
-        path: |
-          **/build/reports/
-          **/build/outputs/
-        retention-days: 7
         if-no-files-found: ignore
 
     - name: Summary
