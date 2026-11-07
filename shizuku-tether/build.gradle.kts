@@ -84,7 +84,7 @@ dependencies {
     implementation(project(":common"))
     
     // gomobile generated AAR via flatDir
-    implementation(":tetherpath@aar")
+    implementation(files("libs/tetherpath.aar"))
 
     implementation(libs.kotlin.coroutine)
     implementation(libs.androidx.core)
