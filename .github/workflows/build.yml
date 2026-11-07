@@ -10,6 +10,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     
     steps:
     - name: Checkout code
@@ -131,6 +133,25 @@ jobs:
         retention-days: 30
         if-no-files-found: ignore
 
+    # Publish APKs as Release assets for DIRECT .apk download (artifacts are always zipped)
+    - name: Publish APKs to Release (direct .apk links)
+      if: success() && github.event_name == 'push'
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: debug-latest
+        name: Latest Debug APK
+        body: |
+          Auto-built debug APKs from commit ${{ github.sha }}.
+          Download the .apk for your architecture directly below (no zip).
+        files: |
+          app/build/outputs/apk/meta/debug/*arm64-v8a*.apk
+          app/build/outputs/apk/meta/debug/*armeabi-v7a*.apk
+          app/build/outputs/apk/meta/debug/*x86*.apk
+          app/build/outputs/apk/meta/debug/*universal*.apk
+        prerelease: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
     - name: Summary
       if: success()
       run: |
@@ -139,5 +160,6 @@ jobs:
         echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
         echo "**Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### Download APK" >> $GITHUB_STEP_SUMMARY
-        echo "APK files are available in the Artifacts section of this workflow run." >> $GITHUB_STEP_SUMMARY
+        echo "### Download APK (direct .apk)" >> $GITHUB_STEP_SUMMARY
+        echo "Go to Releases -> 'Latest Debug APK' for direct .apk downloads." >> $GITHUB_STEP_SUMMARY
+        echo "Artifacts (zip) also available in this run." >> $GITHUB_STEP_SUMMARY
